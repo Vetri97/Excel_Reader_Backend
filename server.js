@@ -1,15 +1,37 @@
 // server.js
-
+const mongoose = require("mongoose");
 const express = require("express");
 const app = express();
 const bodyParser = require("body-parser");
 const morgan = require("morgan");
+const config = require("./app.config");
+
+const { CONNECTION_STRING } = config;
 
 const cors = require("cors");
 
 require("dotenv/config");
 
-const fileUploadRouter = require("./route/fileUpload");
+const port = process.env.PORT || 8000;
+
+const startServer = () => {
+  mongoose
+    .connect(CONNECTION_STRING, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      dbName: "excelFileReader",
+    })
+    .then(() => {
+      console.log("Database connection is ready");
+
+      app.listen(port, () => {
+        console.log(`Server running on port ${port}`);
+      });
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+};
 
 // middleware
 app.use(cors());
@@ -22,7 +44,5 @@ app.use(morgan("tiny"));
 require("./route/fileUpload")(app);
 
 // Start the server
-const port = process.env.PORT || 8000;
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+
+startServer();

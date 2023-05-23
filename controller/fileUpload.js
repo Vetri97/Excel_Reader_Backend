@@ -1,7 +1,9 @@
 var XLSX = require("xlsx");
 var multer = require("multer");
 
+const { promisify } = require("util");
 const config = require("../app.config");
+const fileUpload = require("../model/fileUpload");
 
 //saves file in temp dir
 var storage = multer.diskStorage({
@@ -18,19 +20,20 @@ var upload = multer({
 }).single("file");
 
 // read  file from temp dir
+
 exports.fileRead = async (req, res) => {
   try {
-    upload(req, res, function (err) {
-      if (err instanceof multer.MulterError) {
-        return res.status(501).json(err);
-      } else if (err) {
-        return res.status(501).json(err);
-      }
-      var filename = req.file.filename.toString().split("-");
-      console.log(filename);
-      console.log(filename[1]);
-      createEntry(req.file.path, filename[1], res);
-    });
+    const uploadPromise = promisify(upload);
+    await uploadPromise(req, res);
+    console.log(req, "Req log");
+
+    var filename = req.file?.filename;
+    console.log(filename, "filenme");
+    if (!filename) {
+      throw new Error("Invalid file name");
+    }
+
+    await createEntry(req.file.path, filename, res);
   } catch (err) {
     res.status(500).send({
       status: true,
@@ -38,6 +41,7 @@ exports.fileRead = async (req, res) => {
     });
   }
 };
+
 //creating an entry
 async function createEntry(path, filename, res) {
   try {
@@ -67,16 +71,45 @@ async function createEntry(path, filename, res) {
       for (let j = 0; j < rows[0].length; j++) {
         const columnName = rows[0][j];
         const cellValue = row[j];
-        rowData[columnName] = cellValue;
+
+        // Mark the column as invalid if the cell value is empty
+        if (!cellValue) {
+          rowData[columnName] = "invalid";
+          rowData.hasInvalidFields = true;
+        } else {
+          rowData[columnName] = cellValue;
+        }
       }
 
       // Add the row rows to the JSON array
       jsonData.push(rowData);
     }
 
+    for (let i = 0; i < jsonData.length; i++) {
+      const data = jsonData[i];
+
+      // Skip rows with hasInvalidFields set to true
+      if (data.hasInvalidFields) {
+        continue;
+      }
+
+      // Create a new document using the FileUpload model
+      const fileUploadFun = new fileUpload({
+        companyName: data["College Name"],
+        university: data["University"],
+        email: data["Email"],
+      });
+
+      // Save the document to the MongoDB table
+      await fileUploadFun.save();
+    }
+
+    console.log("Data inserted successfully");
+
     res.status(200).send({
       status: true,
-      data: [{ filename }],
+      data: [{ filename, excelData: jsonData }],
+
       message: "Data entered created successfully",
     });
   } catch (err) {
